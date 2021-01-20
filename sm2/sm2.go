@@ -63,7 +63,13 @@ var two = new(big.Int).SetInt64(2)
 
 // sign format = 30 + len(z) + 02 + len(r) + r + 02 + len(s) + s, z being what follows its size, ie 02+len(r)+r+02+len(s)+s
 func (priv *PrivateKey) Sign(random io.Reader, msg []byte, signer crypto.SignerOpts) ([]byte, error) {
-	r, s, err := Sm2Sign(priv, msg, nil, random)
+	s := &big.Int{}
+	digest, err := priv.PublicKey.Sm3Digest(msg, nil)
+	if err != nil {
+		return nil, err
+	}
+	e := new(big.Int).SetBytes(digest)
+	r, err := priv.Sm2Sign(msg, nil, random, e, s)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +82,7 @@ func (pub *PublicKey) Verify(msg []byte, sign []byte) bool {
 	if err != nil {
 		return false
 	}
-	return Sm2Verify(pub, msg, default_uid, sm2Sign.R, sm2Sign.S)
+	return pub.Sm2Verify(msg, default_uid, sm2Sign.R, sm2Sign.S)
 }
 
 func (pub *PublicKey) Sm3Digest(msg, uid []byte) ([]byte, error) {
@@ -119,29 +125,34 @@ func KeyExchangeA(klen int, ida, idb []byte, priA *PrivateKey, pubB *PublicKey, 
 
 //****************************************************************************//
 
-func Sm2Sign(priv *PrivateKey, msg, uid []byte, random io.Reader) (r, s *big.Int, err error) {
-	digest, err := priv.PublicKey.Sm3Digest(msg, uid)
-	if err != nil {
-		return nil, nil, err
-	}
-	e := new(big.Int).SetBytes(digest)
+func (priv *PrivateKey) Sm2Sign(msg, uid []byte, random io.Reader, e *big.Int, s *big.Int) (r *big.Int, err error) {
 	c := priv.PublicKey.Curve
 	N := c.Params().N
 	if N.Sign() == 0 {
-		return nil, nil, errZeroParam
+		return nil, errZeroParam
 	}
+<<<<<<< HEAD
 
+=======
+>>>>>>> pointer and singleton
 	k := new(big.Int)
 	rD := new(big.Int)
 	d1 := new(big.Int)
 	d1Inv := new(big.Int)
 	t := new(big.Int)
+<<<<<<< HEAD
 	s = new(big.Int)
+=======
+>>>>>>> pointer and singleton
 	for { // 调整算法细节以实现SM2
 		for {
 			err = randFieldElement(c, random, k)
 			if err != nil {
+<<<<<<< HEAD
 				return nil, nil, err
+=======
+				return nil, err
+>>>>>>> pointer and singleton
 			}
 			r, _ = priv.Curve.ScalarBaseMult(k.Bytes())
 			r.Add(r, e)
@@ -163,9 +174,9 @@ func Sm2Sign(priv *PrivateKey, msg, uid []byte, random io.Reader) (r, s *big.Int
 			break
 		}
 	}
-	return
+	return r, nil
 }
-func Sm2Verify(pub *PublicKey, msg, uid []byte, r, s *big.Int) bool {
+func (pub *PublicKey) Sm2Verify(msg, uid []byte, r, s *big.Int) bool {
 	c := pub.Curve
 	N := c.Params().N
 	//one := new(big.Int).SetInt64(1)
@@ -401,10 +412,10 @@ func ZA(pub *PublicKey, uid []byte) ([]byte, error) {
 	if uidLen > 0 {
 		za.Write(uid)
 	}
-	za.Write(sm2P256.A.Bytes())
-	za.Write(sm2P256.B.Bytes())
-	za.Write(sm2P256.Gx.Bytes())
-	za.Write(sm2P256.Gy.Bytes())
+	za.Write(AByte)
+	za.Write(BByte)
+	za.Write(GxByte)
+	za.Write(GyByte)
 
 	xBuf := pub.X.Bytes()
 	yBuf := pub.Y.Bytes()
@@ -492,10 +503,10 @@ func CipherUnmarshal(data []byte) ([]byte, error) {
 	}
 	c := []byte{}
 	if n := len(x); n < 32 {
-		x = append(zeroByteSlice()[:32-n], x...)
+		x = append(zeroByteSlice[:32-n], x...)
 	}
 	if n := len(y); n < 32 {
-		y = append(zeroByteSlice()[:32-n], y...)
+		y = append(zeroByteSlice[:32-n], y...)
 	}
 	c = append(c, x...)          // x分量
 	c = append(c, y...)          // y分
