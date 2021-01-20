@@ -46,13 +46,13 @@ import (
  */
 
 type sm2P256Curve struct {
-	//CurveParams  *elliptic.CurveParams
+	*elliptic.CurveParams
 	RInverse, A  *big.Int
 	a, b, gx, gy sm2P256FieldElement
 }
 
 //var initonce sync.Once
-//var sm2P256 sm2P256Curve
+var sm2P256 sm2P256Curve
 var instance *sm2P256Curve
 var params *elliptic.CurveParams
 var A = &big.Int{}
@@ -77,40 +77,20 @@ const (
 )
 
 func initP256Sm2() {
-	//A = &big.Int{}
-	A.SetString("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFC", 16)
+	sm2P256.CurveParams = &elliptic.CurveParams{Name: "SM2-P-256"} // sm2
+	sm2P256.A, _ = new(big.Int).SetString("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFC", 16)
 	//SM2椭	椭 圆 曲 线 公 钥 密 码 算 法 推 荐 曲 线 参 数
-	P.SetString("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFF", 16)
-	N.SetString("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFF7203DF6B21C6052B53BBF40939D54123", 16)
-	B.SetString("28E9FA9E9D9F5E344D5A9E4BCF6509A7F39789F515AB8F92DDBCBD414D940E93", 16)
-	Gx.SetString("32C4AE2C1F1981195F9904466A39C9948FE30BBFF2660BE1715A4589334C74C7", 16)
-	Gy.SetString("BC3736A2F4F6779C59BDCEE36B692153D0A9877CC62A474002DF32E52139F0A0", 16)
-	RInverse.SetString("7ffffffd80000002fffffffe000000017ffffffe800000037ffffffc80000002", 16)
-	AByte = A.Bytes()
-	BByte = B.Bytes()
-	GxByte = Gx.Bytes()
-	GyByte = Gy.Bytes()
-	a = sm2P256FromBig(A)
-	gx = sm2P256FromBig(Gx)
-	gy = sm2P256FromBig(Gy)
-	b = sm2P256FromBig(B)
-	params = &elliptic.CurveParams{
-		Name:    "SM2-P-256",
-		P:       P,
-		N:       N,
-		B:       B,
-		Gx:      Gx,
-		Gy:      Gy,
-		BitSize: 256,
-	}
-	instance = &sm2P256Curve{
-		RInverse: RInverse,
-		A:        A,
-		a:        a,
-		b:        b,
-		gx:       gx,
-		gy:       gy,
-	}
+	sm2P256.P, _ = new(big.Int).SetString("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFF", 16)
+	sm2P256.N, _ = new(big.Int).SetString("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFF7203DF6B21C6052B53BBF40939D54123", 16)
+	sm2P256.B, _ = new(big.Int).SetString("28E9FA9E9D9F5E344D5A9E4BCF6509A7F39789F515AB8F92DDBCBD414D940E93", 16)
+	sm2P256.Gx, _ = new(big.Int).SetString("32C4AE2C1F1981195F9904466A39C9948FE30BBFF2660BE1715A4589334C74C7", 16)
+	sm2P256.Gy, _ = new(big.Int).SetString("BC3736A2F4F6779C59BDCEE36B692153D0A9877CC62A474002DF32E52139F0A0", 16)
+	sm2P256.RInverse, _ = new(big.Int).SetString("7ffffffd80000002fffffffe000000017ffffffe800000037ffffffc80000002", 16)
+	sm2P256.BitSize = 256
+	sm2P256.a = sm2P256FromBig(sm2P256.A)
+	sm2P256.gx = sm2P256FromBig(sm2P256.Gx)
+	sm2P256.gy = sm2P256FromBig(sm2P256.Gy)
+	sm2P256.b = sm2P256FromBig(sm2P256.B)
 }
 
 func P256Sm2() elliptic.Curve {
