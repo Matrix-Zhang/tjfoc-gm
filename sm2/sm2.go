@@ -492,10 +492,10 @@ func CipherUnmarshal(data []byte) ([]byte, error) {
 	}
 	c := []byte{}
 	if n := len(x); n < 32 {
-		x = append(zeroByteSlice[:32-n], x...)
+		x = append(zeroByteSlice()[:32-n], x...)
 	}
 	if n := len(y); n < 32 {
-		y = append(zeroByteSlice[:32-n], y...)
+		y = append(zeroByteSlice()[:32-n], y...)
 	}
 	c = append(c, x...)          // x分量
 	c = append(c, y...)          // y分
