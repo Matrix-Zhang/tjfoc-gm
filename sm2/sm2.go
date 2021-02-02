@@ -63,7 +63,7 @@ var two = new(big.Int).SetInt64(2)
 
 // sign format = 30 + len(z) + 02 + len(r) + r + 02 + len(s) + s, z being what follows its size, ie 02+len(r)+r+02+len(s)+s
 func (priv *PrivateKey) Sign(random io.Reader, msg []byte, signer crypto.SignerOpts) ([]byte, error) {
-	r, s,err := Sm2Sign(priv,msg, nil, random)
+	r, s, err := Sm2Sign(priv, msg, nil, random)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func (pub *PublicKey) Verify(msg []byte, sign []byte) bool {
 	if err != nil {
 		return false
 	}
-	return Sm2Verify(pub,msg, default_uid, sm2Sign.R, sm2Sign.S)
+	return Sm2Verify(pub, msg, default_uid, sm2Sign.R, sm2Sign.S)
 }
 
 func (pub *PublicKey) Sm3Digest(msg, uid []byte) ([]byte, error) {
@@ -130,18 +130,18 @@ func Sm2Sign(priv *PrivateKey, msg, uid []byte, random io.Reader) (r, s *big.Int
 	if N.Sign() == 0 {
 		return nil, nil, errZeroParam
 	}
-	 
+
 	k := new(big.Int)
 	rD := new(big.Int)
 	d1 := new(big.Int)
 	d1Inv := new(big.Int)
 	t := new(big.Int)
-	s=new(big.Int)
+	s = new(big.Int)
 	for { // 调整算法细节以实现SM2
 		for {
-			err = randFieldElement(c, random,k)
+			err = randFieldElement(c, random, k)
 			if err != nil {
-				return nil,nil ,err
+				return nil, nil, err
 			}
 			r, _ = priv.Curve.ScalarBaseMult(k.Bytes())
 			r.Add(r, e)
@@ -165,7 +165,7 @@ func Sm2Sign(priv *PrivateKey, msg, uid []byte, random io.Reader) (r, s *big.Int
 	}
 	return
 }
-func Sm2Verify(pub *PublicKey,msg, uid []byte, r, s *big.Int) bool {
+func Sm2Verify(pub *PublicKey, msg, uid []byte, r, s *big.Int) bool {
 	c := pub.Curve
 	N := c.Params().N
 	//one := new(big.Int).SetInt64(1)

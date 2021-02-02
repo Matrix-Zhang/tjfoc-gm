@@ -27,7 +27,6 @@ func byteToString(b []byte) string {
 	for i := 0; i < len(b); i++ {
 		ret += fmt.Sprintf("%02x", b[i])
 	}
-	fmt.Println("ret = ", ret)
 	return ret
 }
 func TestSm3(t *testing.T) {
@@ -55,10 +54,9 @@ func TestSm3(t *testing.T) {
 func BenchmarkSm3(t *testing.B) {
 	t.ReportAllocs()
 	msg := []byte("test")
-	hw := New()
 	for i := 0; i < t.N; i++ {
 
-		hw.Sum(nil)
+		//hw.Sum(nil)
 		Sm3Sum(msg)
 	}
 }
