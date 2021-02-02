@@ -106,7 +106,7 @@ func BenchmarkSM2Verify(t *testing.B) {
 	for i := 0; i < t.N; i++ {
 		isverify:=priv.Verify(msg, sign) // 密钥验证
 		if !isverify  {
-			t.Fatal(err)
+			t.Fatal("Verify error\n")
 		}
 	}
 }
