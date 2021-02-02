@@ -1034,7 +1034,7 @@ func checkSignature(algo SignatureAlgorithm, signed, signature []byte, publicKey
 				X:     pub.X,
 				Y:     pub.Y,
 			}
-			if !sm2pub.Sm2Verify(signed, nil, ecdsaSig.R, ecdsaSig.S) {
+			if !sm2.Sm2Verify(sm2pub,signed, nil, ecdsaSig.R, ecdsaSig.S) {
 				return errors.New("x509: SM2 verification failure")
 			}
 		default:
