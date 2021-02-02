@@ -20,7 +20,7 @@ steps:
   - script: go build -v ./gmtls/gmcredentials/echo
   - script: go mod vendor
   - script: go vet ./sm2
-  - script: go vet ./sm3
+  - script: go vet -asmdecl=false ./sm3
   - script: go vet ./sm4
   - script: go vet ./x509
   - script: go vet ./gmtls/gmcredentials
