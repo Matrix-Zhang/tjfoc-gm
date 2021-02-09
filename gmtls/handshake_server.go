@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync/atomic"
 
 	"github.com/Hyperledger-TWGC/tjfoc-gm/x509"
 )
@@ -114,6 +115,8 @@ func (c *Conn) serverHandshake() error {
 			return err
 		}
 	}
+
+	atomic.StoreUint32(&c.handshakeStatus, 1)
 	return nil
 }
 
@@ -406,7 +409,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 
 	keyAgreement := hs.suite.ka(c.vers)
-	skx, err := keyAgreement.generateServerKeyExchange(c.config, hs.cert,hs.cert, hs.clientHello, hs.hello)
+	skx, err := keyAgreement.generateServerKeyExchange(c.config, hs.cert, hs.cert, hs.clientHello, hs.hello)
 	if err != nil {
 		c.sendAlert(alertHandshakeFailure)
 		return err
