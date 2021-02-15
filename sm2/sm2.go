@@ -130,19 +130,18 @@ func Sm2Sign(priv *PrivateKey, msg, uid []byte, random io.Reader) (r, s *big.Int
 	if N.Sign() == 0 {
 		return nil, nil, errZeroParam
 	}
+	 
 	k := new(big.Int)
 	rD := new(big.Int)
 	d1 := new(big.Int)
 	d1Inv := new(big.Int)
 	t := new(big.Int)
 	s=new(big.Int)
-
-	s=new(big.Int)
 	for { // 调整算法细节以实现SM2
 		for {
 			err = randFieldElement(c, random,k)
 			if err != nil {
-				return nil, nil,err
+				return nil,nil ,err
 			}
 			r, _ = priv.Curve.ScalarBaseMult(k.Bytes())
 			r.Add(r, e)
