@@ -130,62 +130,19 @@ func Sm2Sign(priv *PrivateKey, msg, uid []byte, random io.Reader) (r, s *big.Int
 	if N.Sign() == 0 {
 		return nil, nil, errZeroParam
 	}
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-
-=======
->>>>>>> pointer and singleton
-=======
-	 
->>>>>>> revert Sm2Verify Sm2Sign implement
-=======
-	 
->>>>>>> revert Sm2Sign Sm2verify
-=======
-	 
->>>>>>> fix merge bug
 	k := new(big.Int)
 	rD := new(big.Int)
 	d1 := new(big.Int)
 	d1Inv := new(big.Int)
 	t := new(big.Int)
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-	s = new(big.Int)
-=======
->>>>>>> pointer and singleton
-=======
 	s=new(big.Int)
->>>>>>> revert Sm2Verify Sm2Sign implement
-=======
-=======
->>>>>>> fix merge bug
+
 	s=new(big.Int)
->>>>>>> revert Sm2Sign Sm2verify
 	for { // 调整算法细节以实现SM2
 		for {
 			err = randFieldElement(c, random,k)
 			if err != nil {
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-				return nil, nil, err
-=======
-				return nil, err
->>>>>>> pointer and singleton
-=======
-				return nil,nil ,err
->>>>>>> revert Sm2Verify Sm2Sign implement
-=======
-				return nil,nil ,err
-<<<<<<< HEAD
->>>>>>> revert Sm2Sign Sm2verify
-=======
->>>>>>> fix merge bug
+				return nil, nil,err
 			}
 			r, _ = priv.Curve.ScalarBaseMult(k.Bytes())
 			r.Add(r, e)
