@@ -219,6 +219,10 @@ func (ka *ecdheKeyAgreementGM) processServerKeyExchange(config *Config, clientHe
 		return errors.New("tls: server selected unsupported curve")
 	}
 	ka.curveid = CurveID(skx.key[1])<<8 | CurveID(skx.key[2])
+	//according to GMT0024, we don't care about
+	if ka.curveid != CurveSM2 {
+		return errors.New(fmt.Sprintf("tls: GM ecdhe only unsupported %d curve", CurveSM2))
+	}
 
 	publicLen := int(skx.key[3])
 	if publicLen+4 > len(skx.key) {
@@ -232,10 +236,7 @@ func (ka *ecdheKeyAgreementGM) processServerKeyExchange(config *Config, clientHe
 		return errServerKeyExchange
 	}
 
-	//according to GMT0024, we don't care about
-	if ka.curveid != CurveSM2 {
-		return errors.New(fmt.Sprintf("tls: GM ecdhe only unsupported %d curve", CurveSM2))
-	}
+
 	ka.x, ka.y = elliptic.Unmarshal(sm2.P256Sm2(), publicKey) // Unmarshal also checks whether the given point is on the curve
 	if ka.x == nil {
 		return errServerKeyExchange
@@ -277,26 +278,32 @@ func (ka *ecdheKeyAgreementGM) generateClientKeyExchange(config *Config, clientH
 		serialized = ourPublic[:]
 		preMasterSecret = sharedKey[:]
 	} else {
-		curve, ok := curveForCurveID(ka.curveid)
-		if !ok {
+		if ka.curveid != CurveSM2 {
 			panic("internal error")
 		}
-		priv, mx, my, err := elliptic.GenerateKey(curve, config.rand())
+		sm2PrivKey, err := sm2.GenerateKey(config.rand())
 		if err != nil {
 			return nil, nil, err
 		}
-		x, _ := curve.ScalarMult(ka.x, ka.y, priv)
-		preMasterSecret = make([]byte, (curve.Params().BitSize+7)>>3)
-		xBytes := x.Bytes()
-		copy(preMasterSecret[len(preMasterSecret)-len(xBytes):], xBytes)
-
-		serialized = elliptic.Marshal(curve, mx, my)
+		//priv, mx, my, err := elliptic.GenerateKey(curve, config.rand())
+		//if err != nil {
+		//	return nil, nil, err
+		//}
+		//x, _ := curve.ScalarMult(ka.x, ka.y, priv)
+		//preMasterSecret = make([]byte, (curve.Params().BitSize+7)>>3)
+		//xBytes := x.Bytes()
+		//copy(preMasterSecret[len(preMasterSecret)-len(xBytes):], xBytes)
+		//
+		serialized = elliptic.Marshal(sm2.P256Sm2(), sm2PrivKey.X, sm2PrivKey.Y)
 	}
 
 	ckx := new(clientKeyExchangeMsg)
-	ckx.ciphertext = make([]byte, 1+len(serialized))
-	ckx.ciphertext[0] = byte(len(serialized))
-	copy(ckx.ciphertext[1:], serialized)
+	ckx.ciphertext = make([]byte, 4+len(serialized))
+	ckx.ciphertext[0] = namedCurveType
+	ckx.ciphertext[1] = byte(ka.curveid << 8)
+	ckx.ciphertext[2] = byte(ka.curveid & 0xff)
+	ckx.ciphertext[3] = byte(len(serialized))
+	copy(ckx.ciphertext[4:], serialized)
 
 	return preMasterSecret, ckx, nil
 }

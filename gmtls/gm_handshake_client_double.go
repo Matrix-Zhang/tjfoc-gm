@@ -616,6 +616,8 @@ func (hs *clientHandshakeStateGM) getCertificate(certReq *certificateRequestMsgG
 	// We need to search our list of client certs for one
 	// where SignatureAlgorithm is acceptable to the server and the
 	// Issuer is in certReq.certificateAuthorities
+	chainToSend := new(Certificate)
+
 findCert:
 	for i, chain := range c.config.Certificates {
 
@@ -647,17 +649,17 @@ findCert:
 			if len(certReq.certificateAuthorities) == 0 {
 				// they gave us an empty list, so just take the
 				// first cert from c.config.Certificates
-				return &chain, nil
+				chainToSend.Certificate = append(chainToSend.Certificate, cert)
 			}
 
 			for _, ca := range certReq.certificateAuthorities {
 				if bytes.Equal(x509Cert.RawIssuer, ca) {
-					return &chain, nil
+					chainToSend.Certificate = append(chainToSend.Certificate, ca)
 				}
 			}
 		}
 	}
 
 	// No acceptable certificate found. Don't send a certificate.
-	return new(Certificate), nil
+	return chainToSend, nil
 }
