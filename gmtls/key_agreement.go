@@ -22,10 +22,10 @@ import (
 	"crypto/rsa"
 	"crypto/sha1"
 	"errors"
+	"github.com/Hyperledger-TWGC/tjfoc-gm/sm2"
+	"github.com/Hyperledger-TWGC/tjfoc-gm/x509"
 	"io"
 	"math/big"
-
-	"github.com/Hyperledger-TWGC/tjfoc-gm/x509"
 
 	"golang.org/x/crypto/curve25519"
 )
@@ -132,10 +132,18 @@ func hashForServerKeyExchange(sigType uint8, hashFunc crypto.Hash, version uint1
 		digest := h.Sum(nil)
 		return digest, nil
 	}
-	if sigType == signatureECDSA {
+	switch sigType {
+	case signatureECDSA:
 		return sha1Hash(slices), nil
+	case signatureSM2:
+		var res []byte
+		for _, slice := range slices {
+			res = append(res, slice...)
+		}
+		return res, nil
+	default:
+		return md5SHA1Hash(slices), nil
 	}
-	return md5SHA1Hash(slices), nil
 }
 
 func curveForCurveID(id CurveID) (elliptic.Curve, bool) {
@@ -146,6 +154,8 @@ func curveForCurveID(id CurveID) (elliptic.Curve, bool) {
 		return elliptic.P384(), true
 	case CurveP521:
 		return elliptic.P521(), true
+	case CurveSM2:
+		return sm2.P256Sm2(), true
 	default:
 		return nil, false
 	}

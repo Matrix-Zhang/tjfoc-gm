@@ -635,7 +635,7 @@ findCert:
 
 			if x509Cert.PublicKeyAlgorithm == x509.ECDSA {
 				pubKey, ok := x509Cert.PublicKey.(*ecdsa.PublicKey)
-				if ok && pubKey.Curve == sm2.P256Sm2(){
+				if ok && pubKey.Curve == sm2.P256Sm2() {
 					isGMCert = true
 				}
 			}
