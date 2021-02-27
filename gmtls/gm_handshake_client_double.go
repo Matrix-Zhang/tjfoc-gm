@@ -288,6 +288,10 @@ func (hs *clientHandshakeStateGM) doFullHandshake() error {
 	keyAgreement := hs.suite.ka(c.vers)
 	if ka, ok := keyAgreement.(*eccKeyAgreementGM); ok {
 		ka.encipherCert = c.peerCertificates[1]
+	} else if ka, ok := keyAgreement.(*ecdheKeyAgreementGM); ok {
+		ka.isServer = false
+		ka.encCert = &c.config.Certificates[1]
+		ka.peerEncCert = c.peerCertificates[1]
 	}
 
 	skx, ok := msg.(*serverKeyExchangeMsg)
@@ -378,6 +382,7 @@ func (hs *clientHandshakeStateGM) doFullHandshake() error {
 	}
 
 	hs.masterSecret = masterFromPreMasterSecret(c.vers, hs.suite, preMasterSecret, hs.hello.random, hs.serverHello.random)
+
 	if err := c.config.writeKeyLog(hs.hello.random, hs.masterSecret); err != nil {
 		c.sendAlert(alertInternalError)
 		return errors.New("tls: failed to write to key log: " + err.Error())
@@ -650,11 +655,17 @@ findCert:
 				// they gave us an empty list, so just take the
 				// first cert from c.config.Certificates
 				chainToSend.Certificate = append(chainToSend.Certificate, cert)
+				if chainToSend.PrivateKey == nil {
+					chainToSend.PrivateKey = chain.PrivateKey
+				}
 			}
 
 			for _, ca := range certReq.certificateAuthorities {
 				if bytes.Equal(x509Cert.RawIssuer, ca) {
-					chainToSend.Certificate = append(chainToSend.Certificate, ca)
+					chainToSend.Certificate = append(chainToSend.Certificate, cert)
+					if chainToSend.PrivateKey == nil {
+						chainToSend.PrivateKey = chain.PrivateKey
+					}
 				}
 			}
 		}

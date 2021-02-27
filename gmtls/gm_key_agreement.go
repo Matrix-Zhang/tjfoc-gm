@@ -17,8 +17,6 @@ import (
 
 	"github.com/Hyperledger-TWGC/tjfoc-gm/sm2"
 	"github.com/Hyperledger-TWGC/tjfoc-gm/x509"
-
-	"golang.org/x/crypto/curve25519"
 )
 
 const namedCurveType = 3
@@ -59,16 +57,13 @@ const namedCurveType = 3
 // generates an ephemeral SM2 public/private key pair and signs it. The
 // pre-master secret is then calculated using ECDH.
 type ecdheKeyAgreementGM struct {
-	version    uint16
-	privateKey []byte
-	curveid    CurveID
-
-	// publicKey is used to store the peer's public value when X25519 is
-	// being used.
-	publicKey []byte
-	// x and y are used to store the peer's public value when one of the
-	// NIST curves is being used.
-	x, y *big.Int
+	isServer      bool
+	version       uint16
+	curveid       CurveID
+	encCert       *Certificate
+	privateKey    *sm2.PrivateKey
+	peerPublicKey *sm2.PublicKey
+	peerEncCert   *x509.Certificate
 }
 
 func (ka *ecdheKeyAgreementGM) generateServerKeyExchange(config *Config, signCert, cipherCert *Certificate,
@@ -98,30 +93,18 @@ NextCandidate:
 	}
 
 	var ecdhePublic []byte
+	curve, ok := curveForCurveID(ka.curveid)
 
-	if ka.curveid == X25519 {
-		var scalar, public [32]byte
-		if _, err := io.ReadFull(config.rand(), scalar[:]); err != nil {
-			return nil, err
-		}
-
-		curve25519.ScalarBaseMult(&public, &scalar)
-		ka.privateKey = scalar[:]
-		ecdhePublic = public[:]
-	} else {
-		curve, ok := curveForCurveID(ka.curveid)
-		if !ok {
-			return nil, errors.New("tls: preferredCurves includes unsupported curve")
-		}
-
-		var x, y *big.Int
-		var err error
-		ka.privateKey, x, y, err = elliptic.GenerateKey(curve, config.rand())
-		if err != nil {
-			return nil, err
-		}
-		ecdhePublic = elliptic.Marshal(curve, x, y)
+	if !ok {
+		return nil, errors.New("tls: preferredCurves includes unsupported curve")
 	}
+
+	var err error
+	ka.privateKey, err = sm2.GenerateKey(config.rand())
+	if err != nil {
+		return nil, err
+	}
+	ecdhePublic = elliptic.Marshal(curve, ka.privateKey.X, ka.privateKey.Y)
 
 	serverECDHParams := make([]byte, 1+2+1+len(ecdhePublic))
 	serverECDHParams[0] = namedCurveType
@@ -211,6 +194,31 @@ func (ka *ecdheKeyAgreementGM) processClientKeyExchange(config *Config, cert *Ce
 	//	return preMasterSecret, nil
 }
 
+func (ka *ecdheKeyAgreementGM) sm2KapConputeKey() ([]byte, error) {
+	userId := []byte{'1', '2', '3', '4', '5', '6', '7', '8', '1', '2', '3', '4', '5', '6', '7', '8'}
+	var keyExchange func(int, []byte, []byte, *sm2.PrivateKey, *sm2.PublicKey, *sm2.PrivateKey, *sm2.PublicKey) (k []byte, s1 []byte, s2 []byte, err error)
+	if ka.isServer {
+		keyExchange = sm2.KeyExchangeA
+	} else {
+		keyExchange = sm2.KeyExchangeB
+	}
+
+	var peerPublicKey *sm2.PublicKey
+	if ecdsaPublicKey, ok := ka.peerEncCert.PublicKey.(*ecdsa.PublicKey); ok {
+		peerPublicKey = &sm2.PublicKey{
+			Curve: sm2.P256Sm2(),
+			X:     ecdsaPublicKey.X,
+			Y:     ecdsaPublicKey.Y,
+		}
+	} else {
+		peerPublicKey = ka.peerEncCert.PublicKey.(*sm2.PublicKey)
+	}
+
+	secret, _, _, err := keyExchange(48, userId, userId, ka.encCert.PrivateKey.(*sm2.PrivateKey), peerPublicKey, ka.privateKey, ka.peerPublicKey)
+
+	return secret, err
+}
+
 func (ka *ecdheKeyAgreementGM) processServerKeyExchange(config *Config, clientHello *clientHelloMsg, serverHello *serverHelloMsg, cert *x509.Certificate, skx *serverKeyExchangeMsg) error {
 	if len(skx.key) < 4 {
 		return errServerKeyExchange
@@ -236,11 +244,11 @@ func (ka *ecdheKeyAgreementGM) processServerKeyExchange(config *Config, clientHe
 		return errServerKeyExchange
 	}
 
-
-	ka.x, ka.y = elliptic.Unmarshal(sm2.P256Sm2(), publicKey) // Unmarshal also checks whether the given point is on the curve
-	if ka.x == nil {
+	x, y := elliptic.Unmarshal(sm2.P256Sm2(), publicKey) // Unmarshal also checks whether the given point is on the curve
+	if x == nil {
 		return errServerKeyExchange
 	}
+	ka.peerPublicKey = &sm2.PublicKey{Curve: sm2.P256Sm2(), X: x, Y: y}
 
 	var signatureAlgorithm SignatureScheme
 	_, sigType, hashFunc, err := pickSignatureAlgorithm(cert.PublicKey, []SignatureScheme{signatureAlgorithm}, clientHello.supportedSignatureAlgorithms, ka.version)
@@ -263,47 +271,30 @@ func (ka *ecdheKeyAgreementGM) generateClientKeyExchange(config *Config, clientH
 		return nil, nil, errors.New("tls: missing ServerKeyExchange message")
 	}
 
-	var serialized, preMasterSecret []byte
-
-	if ka.curveid == X25519 {
-		var ourPublic, theirPublic, sharedKey, scalar [32]byte
-
-		if _, err := io.ReadFull(config.rand(), scalar[:]); err != nil {
-			return nil, nil, err
-		}
-
-		copy(theirPublic[:], ka.publicKey)
-		curve25519.ScalarBaseMult(&ourPublic, &scalar)
-		curve25519.ScalarMult(&sharedKey, &scalar, &theirPublic)
-		serialized = ourPublic[:]
-		preMasterSecret = sharedKey[:]
-	} else {
-		if ka.curveid != CurveSM2 {
-			panic("internal error")
-		}
-		sm2PrivKey, err := sm2.GenerateKey(config.rand())
-		if err != nil {
-			return nil, nil, err
-		}
-		//priv, mx, my, err := elliptic.GenerateKey(curve, config.rand())
-		//if err != nil {
-		//	return nil, nil, err
-		//}
-		//x, _ := curve.ScalarMult(ka.x, ka.y, priv)
-		//preMasterSecret = make([]byte, (curve.Params().BitSize+7)>>3)
-		//xBytes := x.Bytes()
-		//copy(preMasterSecret[len(preMasterSecret)-len(xBytes):], xBytes)
-		//
-		serialized = elliptic.Marshal(sm2.P256Sm2(), sm2PrivKey.X, sm2PrivKey.Y)
+	if ka.curveid != CurveSM2 {
+		return nil, nil, errors.New("tls: server selected unsupported curve")
 	}
 
+	var err error
+	ka.privateKey, err = sm2.GenerateKey(config.rand())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	serializedPublicKey := elliptic.Marshal(sm2.P256Sm2(), ka.privateKey.X, ka.privateKey.Y)
+
 	ckx := new(clientKeyExchangeMsg)
-	ckx.ciphertext = make([]byte, 4+len(serialized))
+	ckx.ciphertext = make([]byte, 4+len(serializedPublicKey))
 	ckx.ciphertext[0] = namedCurveType
 	ckx.ciphertext[1] = byte(ka.curveid << 8)
 	ckx.ciphertext[2] = byte(ka.curveid & 0xff)
-	ckx.ciphertext[3] = byte(len(serialized))
-	copy(ckx.ciphertext[4:], serialized)
+	ckx.ciphertext[3] = byte(len(serializedPublicKey))
+	copy(ckx.ciphertext[4:], serializedPublicKey)
+
+	preMasterSecret, err := ka.sm2KapConputeKey()
+	if err != nil {
+		return nil, nil, err
+	}
 
 	return preMasterSecret, ckx, nil
 }
