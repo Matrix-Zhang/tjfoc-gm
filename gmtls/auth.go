@@ -48,6 +48,9 @@ func pickSignatureAlgorithm(pubkey crypto.PublicKey, peerSigAlgs, ourSigAlgs []S
 				return PKCS1WithSHA1, signaturePKCS1v15, crypto.SHA1, nil
 			}
 		case *ecdsa.PublicKey:
+			if pubkey.(*ecdsa.PublicKey).Curve == sm2.P256Sm2() {
+				return SM2WITHSM3, signatureSM2, crypto.SHA1, nil
+			}
 			return ECDSAWithSHA1, signatureECDSA, crypto.SHA1, nil
 		case *sm2.PublicKey:
 			return SM2WITHSM3, signatureSM2, crypto.SHA1, nil
@@ -130,11 +133,19 @@ func verifyHandshakeSignature(sigType uint8, pubkey crypto.PublicKey, hashFunc c
 			return err
 		}
 	case signatureSM2:
-		pubKey, ok := pubkey.(*sm2.PublicKey)
+		sm2PubKey, ok := pubkey.(*sm2.PublicKey)
 		if !ok {
-			return errors.New("tls: SM2 signing requires a SM2 public key")
+			ecdsaPubKey, ok := pubkey.(*ecdsa.PublicKey)
+			if !ok {
+				return errors.New("tls: SM2 signing requires a SM2 public key")
+			}
+			sm2PubKey = &sm2.PublicKey{
+				Curve: sm2.P256Sm2(),
+				X:     ecdsaPubKey.X,
+				Y:     ecdsaPubKey.Y,
+			}
 		}
-		if ok := pubKey.Verify(digest, sig); !ok {
+		if ok := sm2PubKey.Verify(digest, sig); !ok {
 			return errors.New("verify sm2 signature error")
 		}
 	default:

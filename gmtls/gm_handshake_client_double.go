@@ -288,6 +288,10 @@ func (hs *clientHandshakeStateGM) doFullHandshake() error {
 	keyAgreement := hs.suite.ka(c.vers)
 	if ka, ok := keyAgreement.(*eccKeyAgreementGM); ok {
 		ka.encipherCert = c.peerCertificates[1]
+	} else if ka, ok := keyAgreement.(*ecdheKeyAgreementGM); ok {
+		ka.isServer = false
+		ka.encCert = &c.config.Certificates[1]
+		ka.peerEncCert = c.peerCertificates[1]
 	}
 
 	skx, ok := msg.(*serverKeyExchangeMsg)
@@ -378,6 +382,7 @@ func (hs *clientHandshakeStateGM) doFullHandshake() error {
 	}
 
 	hs.masterSecret = masterFromPreMasterSecret(c.vers, hs.suite, preMasterSecret, hs.hello.random, hs.serverHello.random)
+
 	if err := c.config.writeKeyLog(hs.hello.random, hs.masterSecret); err != nil {
 		c.sendAlert(alertInternalError)
 		return errors.New("tls: failed to write to key log: " + err.Error())
@@ -616,6 +621,8 @@ func (hs *clientHandshakeStateGM) getCertificate(certReq *certificateRequestMsgG
 	// We need to search our list of client certs for one
 	// where SignatureAlgorithm is acceptable to the server and the
 	// Issuer is in certReq.certificateAuthorities
+	chainToSend := new(Certificate)
+
 findCert:
 	for i, chain := range c.config.Certificates {
 
@@ -635,7 +642,7 @@ findCert:
 
 			if x509Cert.PublicKeyAlgorithm == x509.ECDSA {
 				pubKey, ok := x509Cert.PublicKey.(*ecdsa.PublicKey)
-				if ok && pubKey.Curve == sm2.P256Sm2(){
+				if ok && pubKey.Curve == sm2.P256Sm2() {
 					isGMCert = true
 				}
 			}
@@ -647,17 +654,23 @@ findCert:
 			if len(certReq.certificateAuthorities) == 0 {
 				// they gave us an empty list, so just take the
 				// first cert from c.config.Certificates
-				return &chain, nil
+				chainToSend.Certificate = append(chainToSend.Certificate, cert)
+				if chainToSend.PrivateKey == nil {
+					chainToSend.PrivateKey = chain.PrivateKey
+				}
 			}
 
 			for _, ca := range certReq.certificateAuthorities {
 				if bytes.Equal(x509Cert.RawIssuer, ca) {
-					return &chain, nil
+					chainToSend.Certificate = append(chainToSend.Certificate, cert)
+					if chainToSend.PrivateKey == nil {
+						chainToSend.PrivateKey = chain.PrivateKey
+					}
 				}
 			}
 		}
 	}
 
 	// No acceptable certificate found. Don't send a certificate.
-	return new(Certificate), nil
+	return chainToSend, nil
 }
