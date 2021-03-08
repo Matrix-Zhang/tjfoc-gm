@@ -98,12 +98,54 @@ func (pub *PublicKey) Sm3Digest(msg, uid []byte) ([]byte, error) {
 }
 
 //****************************Encryption algorithm****************************//
-func (pub *PublicKey) EncryptAsn1(data []byte, random io.Reader) ([]byte, error) {
-	return EncryptAsn1(pub, data, random)
-}
 
-func (priv *PrivateKey) DecryptAsn1(data []byte) ([]byte, error) {
-	return DecryptAsn1(priv, data)
+
+func (pub *PublicKey) encrypt(data []byte, random io.Reader) ([]byte, error) {
+	length := len(data)
+	for {
+		c := []byte{}
+		curve := pub.Curve
+		k := &big.Int{}
+		err := randFieldElement(curve, random, k)
+		if err != nil {
+			return nil, err
+		}
+		x1, y1 := curve.ScalarBaseMult(k.Bytes())
+		x2, y2 := curve.ScalarMult(pub.X, pub.Y, k.Bytes())
+		x1Buf := x1.Bytes()
+		y1Buf := y1.Bytes()
+		x2Buf := x2.Bytes()
+		y2Buf := y2.Bytes()
+		if n := len(x1Buf); n < 32 {
+			x1Buf = append(zeroByteSlice[:32-n], x1Buf...)
+		}
+		if n := len(y1Buf); n < 32 {
+			y1Buf = append(zeroByteSlice[:32-n], y1Buf...)
+		}
+		if n := len(x2Buf); n < 32 {
+			x2Buf = append(zeroByteSlice[:32-n], x2Buf...)
+		}
+		if n := len(y2Buf); n < 32 {
+			y2Buf = append(zeroByteSlice[:32-n], y2Buf...)
+		}
+		c = append(c, x1Buf...) // x分量
+		c = append(c, y1Buf...) // y分量
+		tm := []byte{}
+		tm = append(tm, x2Buf...)
+		tm = append(tm, data...)
+		tm = append(tm, y2Buf...)
+		h := sm3.Sm3Sum(tm)
+		c = append(c, h...)
+		ct, ok := kdf(length, x2Buf, y2Buf) // 密文
+		if !ok {
+			continue
+		}
+		c = append(c, ct...)
+		for i := 0; i < length; i++ {
+			c[96+i] ^= data[i]
+		}
+		return append([]byte{0x04}, c...), nil
+	}
 }
 
 //**************************Key agreement algorithm**************************//
@@ -232,62 +274,7 @@ func Verify(pub *PublicKey, hash []byte, r, s *big.Int) bool {
 	return x.Cmp(r) == 0
 }
 
-/*
- * sm2密文结构如下:
- *  x
- *  y
- *  hash
- *  CipherText
- */
-func Encrypt(pub *PublicKey, data []byte, random io.Reader) ([]byte, error) {
-	length := len(data)
-	for {
-		c := []byte{}
-		curve := pub.Curve
-		k := &big.Int{}
-		err := randFieldElement(curve, random, k)
-		if err != nil {
-			return nil, err
-		}
-		x1, y1 := curve.ScalarBaseMult(k.Bytes())
-		x2, y2 := curve.ScalarMult(pub.X, pub.Y, k.Bytes())
-		x1Buf := x1.Bytes()
-		y1Buf := y1.Bytes()
-		x2Buf := x2.Bytes()
-		y2Buf := y2.Bytes()
-		if n := len(x1Buf); n < 32 {
-			x1Buf = append(zeroByteSlice[:32-n], x1Buf...)
-		}
-		if n := len(y1Buf); n < 32 {
-			y1Buf = append(zeroByteSlice[:32-n], y1Buf...)
-		}
-		if n := len(x2Buf); n < 32 {
-			x2Buf = append(zeroByteSlice[:32-n], x2Buf...)
-		}
-		if n := len(y2Buf); n < 32 {
-			y2Buf = append(zeroByteSlice[:32-n], y2Buf...)
-		}
-		c = append(c, x1Buf...) // x分量
-		c = append(c, y1Buf...) // y分量
-		tm := []byte{}
-		tm = append(tm, x2Buf...)
-		tm = append(tm, data...)
-		tm = append(tm, y2Buf...)
-		h := sm3.Sm3Sum(tm)
-		c = append(c, h...)
-		ct, ok := kdf(length, x2Buf, y2Buf) // 密文
-		if !ok {
-			continue
-		}
-		c = append(c, ct...)
-		for i := 0; i < length; i++ {
-			c[96+i] ^= data[i]
-		}
-		return append([]byte{0x04}, c...), nil
-	}
-}
-
-func Decrypt(priv *PrivateKey, data []byte) ([]byte, error) {
+func (priv *PrivateKey) decrypt(data []byte) ([]byte, error) {
 	data = data[1:]
 	length := len(data) - 96
 	curve := priv.Curve
@@ -428,28 +415,6 @@ var zeroByteSlice = []byte{
 	0, 0, 0, 0,
 	0, 0, 0, 0,
 	0, 0, 0, 0,
-}
-
-/*
-sm2加密，返回asn.1编码格式的密文内容
-*/
-func EncryptAsn1(pub *PublicKey, data []byte, rand io.Reader) ([]byte, error) {
-	cipher, err := Encrypt(pub, data, rand)
-	if err != nil {
-		return nil, err
-	}
-	return CipherMarshal(cipher)
-}
-
-/*
-sm2解密，解析asn.1编码格式的密文内容
-*/
-func DecryptAsn1(pub *PrivateKey, data []byte) ([]byte, error) {
-	cipher, err := CipherUnmarshal(data)
-	if err != nil {
-		return nil, err
-	}
-	return Decrypt(pub, cipher)
 }
 
 /*
@@ -624,7 +589,29 @@ func getLastBit(a *big.Int) uint {
 	return a.Bit(0)
 }
 
+/*
+sm2加密，返回asn.1编码格式的密文内容
+*/
+func Encrypt(pub *PublicKey, data []byte, random io.Reader) ([]byte, error) {
+	cipher, err := pub.encrypt(data, random)
+	if err != nil {
+		return nil, err
+	}
+	return CipherMarshal(cipher)
+}
+
+/*
+sm2解密，解析asn.1编码格式的密文内容
+*/
 // crypto.Decrypter
 func (priv *PrivateKey) Decrypt(_ io.Reader, msg []byte, _ crypto.DecrypterOpts) (plaintext []byte, err error) {
-	return Decrypt(priv, msg)
+	cipher, err := CipherUnmarshal(msg)
+	if err != nil {
+		return nil, err
+	}
+	return priv.decrypt(cipher)
+}
+
+func Decrypt(priv *PrivateKey, msg []byte) (plaintext []byte, err error) {
+	return priv.Decrypt(rand.Reader, msg, nil)
 }

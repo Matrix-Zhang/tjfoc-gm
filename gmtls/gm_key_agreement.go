@@ -428,7 +428,7 @@ func (ka *eccKeyAgreementGM) hashForServerKeyExchange(slices ...[]byte) []byte {
 	return buffer.Bytes()
 }
 
-func (ka *eccKeyAgreementGM) generateClientKeyExchange(config *Config, clientHello *clientHelloMsg, cert *x509.Certificate) ([]byte, *clientKeyExchangeMsg, error) {
+func (ka *eccKeyAgreementGM) generateClientKeyExchange(config *Config, clientHello *clientHelloMsg, _ *x509.Certificate) ([]byte, *clientKeyExchangeMsg, error) {
 	preMasterSecret := make([]byte, 48)
 	preMasterSecret[0] = byte(clientHello.vers >> 8)
 	preMasterSecret[1] = byte(clientHello.vers)
