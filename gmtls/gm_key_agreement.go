@@ -113,49 +113,46 @@ NextCandidate:
 	serverECDHParams[3] = byte(len(ecdhePublic))
 	copy(serverECDHParams[4:], ecdhePublic)
 
-	//priv, ok := cert.PrivateKey.(crypto.Signer)
-	//if !ok {
-	//	return nil, errors.New("tls: certificate private key does not implement crypto.Signer")
-	//}
-	//
-	//signatureAlgorithm, sigType, hashFunc, err := pickSignatureAlgorithm(priv.Public(), clientHello.supportedSignatureAlgorithms, supportedSignatureAlgorithms, ka.version)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//if (sigType == signaturePKCS1v15 || sigType == signatureRSAPSS) != ka.isRSA {
-	//	return nil, errors.New("tls: certificate cannot be used with the selected cipher suite")
-	//}
-	//
-	//digest, err := hashForServerKeyExchange(sigType, hashFunc, ka.version, clientHello.random, hello.random, serverECDHParams)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//
-	//signOpts := crypto.SignerOpts(hashFunc)
-	//if sigType == signatureRSAPSS {
-	//	signOpts = &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: hashFunc}
-	//}
-	//sig, err := priv.Sign(config.rand(), digest, signOpts)
-	//if err != nil {
-	//	return nil, errors.New("tls: failed to sign ECDHE parameters: " + err.Error())
-	//}
-	//
+	priv, ok := signCert.PrivateKey.(crypto.Signer)
+	if !ok {
+		return nil, errors.New("tls: certificate private key does not implement crypto.Signer")
+	}
+
+	signatureAlgorithm, sigType, hashFunc, err := pickSignatureAlgorithm(priv.Public(), clientHello.supportedSignatureAlgorithms, supportedSignatureAlgorithms, ka.version)
+	if err != nil {
+		return nil, err
+	}
+	if sigType != signatureSM2 {
+		return nil, errors.New("tls: certificate is not signed by sm2")
+	}
+
+	digest, err := hashForServerKeyExchange(sigType, hashFunc, ka.version, clientHello.random, hello.random, serverECDHParams)
+	if err != nil {
+		return nil, err
+	}
+
+	signOpts := crypto.SignerOpts(hashFunc)
+	sig, err := priv.Sign(config.rand(), digest, signOpts)
+	if err != nil {
+		return nil, errors.New("tls: failed to sign ECDHE parameters: " + err.Error())
+	}
+
 	skx := new(serverKeyExchangeMsg)
-	//sigAndHashLen := 0
-	//if ka.version >= VersionTLS12 {
-	//	sigAndHashLen = 2
-	//}
-	//skx.key = make([]byte, len(serverECDHParams)+sigAndHashLen+2+len(sig))
-	//copy(skx.key, serverECDHParams)
-	//k := skx.key[len(serverECDHParams):]
-	//if ka.version >= VersionTLS12 {
-	//	k[0] = byte(signatureAlgorithm >> 8)
-	//	k[1] = byte(signatureAlgorithm)
-	//	k = k[2:]
-	//}
-	//k[0] = byte(len(sig) >> 8)
-	//k[1] = byte(len(sig))
-	//copy(k[2:], sig)
+	sigAndHashLen := 0
+	if ka.version >= VersionTLS12 {
+		sigAndHashLen = 2
+	}
+	skx.key = make([]byte, len(serverECDHParams)+sigAndHashLen+2+len(sig))
+	copy(skx.key, serverECDHParams)
+	k := skx.key[len(serverECDHParams):]
+	if ka.version >= VersionTLS12 {
+		k[0] = byte(signatureAlgorithm >> 8)
+		k[1] = byte(signatureAlgorithm)
+		k = k[2:]
+	}
+	k[0] = byte(len(sig) >> 8)
+	k[1] = byte(len(sig))
+	copy(k[2:], sig)
 
 	return skx, nil
 }
