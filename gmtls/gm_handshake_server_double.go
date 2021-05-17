@@ -458,6 +458,14 @@ func (hs *serverHandshakeStateGM) doFullHandshake() error {
 	}
 	hs.finishedHash.Write(ckx.marshal())
 
+	if ka, ok := keyAgreement.(*eccKeyAgreementGM); ok {
+		ka.encipherCert = c.peerCertificates[1]
+	} else if ka, ok := keyAgreement.(*ecdheKeyAgreementGM); ok {
+		ka.isServer = true
+		ka.encCert = &c.config.Certificates[1]
+		ka.peerEncCert = c.peerCertificates[1]
+	}
+
 	preMasterSecret, err := keyAgreement.processClientKeyExchange(c.config, &hs.cert[1], ckx, c.vers)
 	if err != nil {
 		c.sendAlert(alertHandshakeFailure)

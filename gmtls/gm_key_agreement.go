@@ -158,37 +158,54 @@ NextCandidate:
 }
 
 func (ka *ecdheKeyAgreementGM) processClientKeyExchange(config *Config, cert *Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
-	panic("")
-	//	if len(ckx.ciphertext) == 0 || int(ckx.ciphertext[0]) != len(ckx.ciphertext)-1 {
-	//		return nil, errClientKeyExchange
-	//	}
-	//
-	//	if ka.curveid == X25519 {
-	//		if len(ckx.ciphertext) != 1+32 {
-	//			return nil, errClientKeyExchange
-	//		}
-	//
-	//		var theirPublic, sharedKey, scalar [32]byte
-	//		copy(theirPublic[:], ckx.ciphertext[1:])
-	//		copy(scalar[:], ka.privateKey)
-	//		curve25519.ScalarMult(&sharedKey, &scalar, &theirPublic)
-	//		return sharedKey[:], nil
-	//	}
-	//
-	//	curve, ok := curveForCurveID(ka.curveid)
-	//	if !ok {
-	//		panic("internal error")
-	//	}
-	//	x, y := elliptic.Unmarshal(curve, ckx.ciphertext[1:]) // Unmarshal also checks whether the given point is on the curve
-	//	if x == nil {
-	//		return nil, errClientKeyExchange
-	//	}
-	//	x, _ = curve.ScalarMult(x, y, ka.privateKey)
-	//	preMasterSecret := make([]byte, (curve.Params().BitSize+7)>>3)
-	//	xBytes := x.Bytes()
-	//	copy(preMasterSecret[len(preMasterSecret)-len(xBytes):], xBytes)
-	//
-	//	return preMasterSecret, nil
+	if len(ckx.ciphertext) <= 4 {
+		return nil, errors.New("tls: ecdhe client key exchange length not enougth")
+	}
+	ciphertextPubKey := ckx.ciphertext[4:]
+	if int(ckx.ciphertext[3]) != len(ciphertextPubKey) {
+		return nil, errors.New("tls: ciphertext length of ecdhe client key exchange not match")
+	}
+
+	if ka.curveid != CurveSM2 {
+		return nil, errors.New("tls: not SM2 curve")
+		//if len(ckx.ciphertext) != 1+32 {
+		//	return nil, errClientKeyExchange
+		//}
+		//
+		////var theirPublic, sharedKey, scalar [32]byte
+		////copy(theirPublic[:], ckx.ciphertext[1:])
+		////copy(scalar[:], ka.privateKey.D.Bytes())
+		//theirPublicX := new(big.Int).SetBytes(ckx.ciphertext[1:32])
+		//theirPublicY := new(big.Int).SetBytes(ckx.ciphertext[32:64])
+		//curve := sm2.P256Sm2()
+		//sharedKeyX, sharedKeyY := curve.ScalarMult(theirPublicX, theirPublicY, ka.privateKey.D.Bytes())
+		//var sharedKey [32]byte
+		//copy(sharedKey[:16], sharedKeyX.Bytes())
+		//copy(sharedKey[16:], sharedKeyY.Bytes())
+		////curve25519.ScalarMult(&sharedKey, &scalar, &theirPublic)
+		//return sharedKey[:], nil
+	}
+	//curve, ok := curveForCurveID(ka.curveid)
+	//if !ok {
+	//	panic("internal error")
+	//}
+
+	x, y := elliptic.Unmarshal(sm2.P256Sm2(), ciphertextPubKey) // Unmarshal also checks whether the given point is on the curve
+	if x == nil {
+		return nil, errClientKeyExchange
+	}
+	ka.peerPublicKey = &sm2.PublicKey{Curve: sm2.P256Sm2(), X: x, Y: y}
+	//x, _ = curve.ScalarMult(x, y, ka.privateKey.D.Bytes())
+	//preMasterSecret := make([]byte, (curve.Params().BitSize+7)>>3)
+	//xBytes := x.Bytes()
+	//copy(preMasterSecret[len(preMasterSecret)-len(xBytes):], xBytes)
+
+	preMasterSecret, err := ka.sm2KapConputeKey()
+	if err != nil {
+		return nil, err
+	}
+
+	return preMasterSecret, nil
 }
 
 func (ka *ecdheKeyAgreementGM) sm2KapConputeKey() ([]byte, error) {
