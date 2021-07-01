@@ -63,13 +63,12 @@ type ecdheKeyAgreementGM struct {
 	encCert       *Certificate
 	privateKey    *sm2.PrivateKey
 	peerPublicKey *sm2.PublicKey
-	peerEncCert   *x509.Certificate
+	peerCert      *x509.Certificate
 }
 
 func (ka *ecdheKeyAgreementGM) generateServerKeyExchange(config *Config, signCert, cipherCert *Certificate,
 	clientHello *clientHelloMsg, hello *serverHelloMsg) (*serverKeyExchangeMsg, error) {
 	preferredCurves := config.curvePreferences()
-
 NextCandidate:
 	for _, candidate := range preferredCurves {
 		for _, c := range clientHello.supportedCurves {
@@ -81,7 +80,7 @@ NextCandidate:
 	}
 
 	if ka.curveid == 0 {
-		return nil, errors.New("tls: no supported elliptic curves offered")
+		ka.curveid = 249
 	}
 
 	if ka.curveid != 249 {
@@ -161,44 +160,25 @@ func (ka *ecdheKeyAgreementGM) processClientKeyExchange(config *Config, cert *Ce
 	if len(ckx.ciphertext) <= 4 {
 		return nil, errors.New("tls: ecdhe client key exchange length not enougth")
 	}
+	if ckx.ciphertext[0] != namedCurveType {
+		return nil, errors.New("tls: not SM2 curve")
+	}
+
+	ka.curveid = CurveID(ckx.ciphertext[1])<<8 | CurveID(ckx.ciphertext[2])
+	//according to GMT0024, we don't care about
+	if ka.curveid != 0 && ka.curveid != CurveSM2 {
+		return nil, errors.New(fmt.Sprintf("tls: GM ecdhe only unsupported %d curve", CurveSM2))
+	}
+
 	ciphertextPubKey := ckx.ciphertext[4:]
 	if int(ckx.ciphertext[3]) != len(ciphertextPubKey) {
 		return nil, errors.New("tls: ciphertext length of ecdhe client key exchange not match")
 	}
-
-	if ka.curveid != CurveSM2 {
-		return nil, errors.New("tls: not SM2 curve")
-		//if len(ckx.ciphertext) != 1+32 {
-		//	return nil, errClientKeyExchange
-		//}
-		//
-		////var theirPublic, sharedKey, scalar [32]byte
-		////copy(theirPublic[:], ckx.ciphertext[1:])
-		////copy(scalar[:], ka.privateKey.D.Bytes())
-		//theirPublicX := new(big.Int).SetBytes(ckx.ciphertext[1:32])
-		//theirPublicY := new(big.Int).SetBytes(ckx.ciphertext[32:64])
-		//curve := sm2.P256Sm2()
-		//sharedKeyX, sharedKeyY := curve.ScalarMult(theirPublicX, theirPublicY, ka.privateKey.D.Bytes())
-		//var sharedKey [32]byte
-		//copy(sharedKey[:16], sharedKeyX.Bytes())
-		//copy(sharedKey[16:], sharedKeyY.Bytes())
-		////curve25519.ScalarMult(&sharedKey, &scalar, &theirPublic)
-		//return sharedKey[:], nil
-	}
-	//curve, ok := curveForCurveID(ka.curveid)
-	//if !ok {
-	//	panic("internal error")
-	//}
-
 	x, y := elliptic.Unmarshal(sm2.P256Sm2(), ciphertextPubKey) // Unmarshal also checks whether the given point is on the curve
 	if x == nil {
 		return nil, errClientKeyExchange
 	}
 	ka.peerPublicKey = &sm2.PublicKey{Curve: sm2.P256Sm2(), X: x, Y: y}
-	//x, _ = curve.ScalarMult(x, y, ka.privateKey.D.Bytes())
-	//preMasterSecret := make([]byte, (curve.Params().BitSize+7)>>3)
-	//xBytes := x.Bytes()
-	//copy(preMasterSecret[len(preMasterSecret)-len(xBytes):], xBytes)
 
 	preMasterSecret, err := ka.sm2KapComputeKey()
 	if err != nil {
@@ -218,14 +198,14 @@ func (ka *ecdheKeyAgreementGM) sm2KapComputeKey() ([]byte, error) {
 	}
 
 	var peerPublicKey *sm2.PublicKey
-	if ecdsaPublicKey, ok := ka.peerEncCert.PublicKey.(*ecdsa.PublicKey); ok {
+	if ecdsaPublicKey, ok := ka.peerCert.PublicKey.(*ecdsa.PublicKey); ok {
 		peerPublicKey = &sm2.PublicKey{
 			Curve: sm2.P256Sm2(),
 			X:     ecdsaPublicKey.X,
 			Y:     ecdsaPublicKey.Y,
 		}
 	} else {
-		peerPublicKey = ka.peerEncCert.PublicKey.(*sm2.PublicKey)
+		peerPublicKey = ka.peerCert.PublicKey.(*sm2.PublicKey)
 	}
 
 	secret, _, _, err := keyExchange(48, userId, userId, ka.encCert.PrivateKey.(*sm2.PrivateKey), peerPublicKey, ka.privateKey, ka.peerPublicKey)
@@ -391,12 +371,11 @@ func (ka *eccKeyAgreementGM) processServerKeyExchange(config *Config, clientHell
 	if len(skx.key) <= 2 {
 		return errServerKeyExchange
 	}
-	sigLen := int(skx.key[0]<<8 | skx.key[1])
+	sigLen := int(int(skx.key[0])<<8 | int(skx.key[1]))
 	if sigLen+2 != len(skx.key) {
 		return errServerKeyExchange
 	}
 	sig := skx.key[2:]
-	//sig := skx.key[:]
 
 	digest := ka.hashForServerKeyExchange(clientHello.random, serverHello.random, ka.encipherCert.Raw)
 
