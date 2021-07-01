@@ -200,7 +200,7 @@ func (ka *ecdheKeyAgreementGM) processClientKeyExchange(config *Config, cert *Ce
 	//xBytes := x.Bytes()
 	//copy(preMasterSecret[len(preMasterSecret)-len(xBytes):], xBytes)
 
-	preMasterSecret, err := ka.sm2KapConputeKey()
+	preMasterSecret, err := ka.sm2KapComputeKey()
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +208,7 @@ func (ka *ecdheKeyAgreementGM) processClientKeyExchange(config *Config, cert *Ce
 	return preMasterSecret, nil
 }
 
-func (ka *ecdheKeyAgreementGM) sm2KapConputeKey() ([]byte, error) {
+func (ka *ecdheKeyAgreementGM) sm2KapComputeKey() ([]byte, error) {
 	userId := []byte{'1', '2', '3', '4', '5', '6', '7', '8', '1', '2', '3', '4', '5', '6', '7', '8'}
 	var keyExchange func(int, []byte, []byte, *sm2.PrivateKey, *sm2.PublicKey, *sm2.PrivateKey, *sm2.PublicKey) (k []byte, s1 []byte, s2 []byte, err error)
 	if ka.isServer {
@@ -305,7 +305,7 @@ func (ka *ecdheKeyAgreementGM) generateClientKeyExchange(config *Config, clientH
 	ckx.ciphertext[3] = byte(len(serializedPublicKey))
 	copy(ckx.ciphertext[4:], serializedPublicKey)
 
-	preMasterSecret, err := ka.sm2KapConputeKey()
+	preMasterSecret, err := ka.sm2KapComputeKey()
 	if err != nil {
 		return nil, nil, err
 	}
